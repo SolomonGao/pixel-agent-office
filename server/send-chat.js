@@ -1,7 +1,7 @@
 // Helper script to send chat messages with guaranteed UTF-8 encoding
 // Usage: node send-chat.js <from> <fromName> <fromRole> <content> [context]
 
-const http = require('http');
+import http from 'http';
 
 const args = process.argv.slice(2);
 if (args.length < 4) {

@@ -36,10 +36,12 @@ export class ToolAgent extends Agent {
 
   workOnTask(task, officeMap, messageBus) {
     this.assignTask(task);
+    this.setExpression('tool_use');
     if (task.type === 'tool') {
       const toolName = task.description.split(' ')[0] || 'file_read';
       this.executeTool(toolName, { query: task.description }, messageBus);
     } else {
+      this.setExpression('reading');
       this.setDialog('Processing... ⚙️', 3000);
     }
   }

@@ -1,63 +1,99 @@
-export default function AgentList({ agents, onAgentClick }) {
-  const stateLabels = {
-    idle: { text: 'IDLE', color: 'bg-gray-500' },
-    moving: { text: 'MOVE', color: 'bg-blue-500' },
-    working: { text: 'WORK', color: 'bg-amber-500' },
-    reporting: { text: 'DONE', color: 'bg-emerald-500' }
-  };
+import { useState } from 'react';
 
-  const roleLabels = {
-    claude: { text: 'CL', color: 'text-indigo-400' },
-    subagent: { text: 'SA', color: 'text-emerald-400' },
-    tool: { text: 'TL', color: 'text-amber-400' }
-  };
+const ROLE_ICONS = {
+  claude: '🤖',
+  subagent: '👤',
+  tool: '🔧',
+};
+
+const STATE_TO_EXPRESSION = {
+  idle: 'idle',
+  thinking: 'thinking',
+  working: 'coding',
+  reading: 'reading',
+  tool_use: 'tool_use',
+  moving: 'moving',
+  reporting: 'reporting',
+};
+
+const EXPRESSION_LABELS = {
+  idle: 'Idle',
+  thinking: 'Thinking',
+  coding: 'Coding',
+  reading: 'Reading',
+  tool_use: 'Tool',
+  moving: 'Moving',
+  reporting: 'Done',
+};
+
+export default function AgentList({ agents, onAgentClick }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  if (isCollapsed) {
+    return (
+      <div className="shrink-0 border-b border-[var(--border-color)]">
+        <button
+          onClick={() => setIsCollapsed(false)}
+          className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-[var(--bg-panel-hover)] transition-colors"
+        >
+          <span className="text-[var(--text-muted)]">👥 Agents ({agents.length})</span>
+          <span className="text-[var(--text-muted)]">▼</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-48">
-      <h2 className="text-xs text-white p-3 border-b border-pixel-border shrink-0">
-        👥 AGENTS ({agents.length})
-      </h2>
-      <div className="flex-1 overflow-y-auto scrollbar-pixel p-2">
-        {agents.map(agent => {
-          const state = stateLabels[agent.state] || stateLabels.idle;
-          const role = roleLabels[agent.role] || roleLabels.subagent;
+    <div className="shrink-0 border-b border-[var(--border-color)]">
+      <button
+        onClick={() => setIsCollapsed(true)}
+        className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-[var(--bg-panel-hover)] transition-colors"
+      >
+        <span className="text-[var(--text-secondary)] font-pixel text-[9px]">👥 AGENTS</span>
+        <span className="text-[var(--text-muted)]">▲</span>
+      </button>
+
+      <div className="px-2 pb-2 space-y-1 max-h-32 overflow-y-auto scrollbar-pixel">
+        {agents.map((agent) => {
+          const role = agent.role || 'subagent';
+          // Support both class instances (expression) and live mode (state)
+          const expression = agent.expression || STATE_TO_EXPRESSION[agent.state] || 'idle';
+          const exprLabel = EXPRESSION_LABELS[expression] || 'Idle';
 
           return (
-            <div
+            <button
               key={agent.id}
               onClick={() => onAgentClick?.(agent)}
-              className="pixel-card text-xs cursor-pointer hover:bg-gray-800 transition-colors"
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--bg-panel-hover)] transition-colors text-left"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 border"
-                    style={{ backgroundColor: agent.color, borderColor: agent.color }}
-                  />
-                  <div>
-                    <div className="flex items-center gap-1">
-                      <span className={`text-[8px] ${role.color}`}>{role.text}</span>
-                      <span className="text-white">{agent.name}</span>
-                    </div>
-                    {agent.currentTask && (
-                      <div className="text-[7px] text-gray-500 truncate max-w-32">
-                        {agent.currentTask.description.substring(0, 20)}...
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className={`text-[7px] px-1 ${state.color} text-white`}>
-                    {state.text}
-                  </span>
-                  <span className="text-[7px] text-gray-500 mt-0.5">
-                    ✓{agent.tasksCompleted}
-                  </span>
-                </div>
-              </div>
-            </div>
+              {/* Color indicator */}
+              <div
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{
+                  backgroundColor: agent.color,
+                  boxShadow: `0 0 4px ${agent.color}40`
+                }}
+              />
+
+              {/* Icon + Name */}
+              <span className="text-[10px]">{ROLE_ICONS[role] || '👤'}</span>
+              <span className="text-[11px] text-[var(--text-primary)] truncate flex-1">
+                {agent.name}
+              </span>
+
+              {/* Status pill */}
+              <span className={`status-pill ${expression}`}>
+                {exprLabel}
+              </span>
+            </button>
           );
         })}
+
+        {agents.length === 0 && (
+          <div className="text-center text-[var(--text-muted)] text-xs py-2">
+            No agents yet...
+          </div>
+        )}
       </div>
     </div>
   );

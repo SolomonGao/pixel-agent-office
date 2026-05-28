@@ -19,6 +19,7 @@ export class Claude extends Agent {
 
   receiveTask(task, messageBus) {
     this.analysisQueue.push(task);
+    this.setExpression('thinking');
     this.setDialog(`Analyzing: ${task.description.substring(0, 15)}...`, 2000);
 
     // Simulate analysis time

@@ -33,6 +33,13 @@ export class Subagent extends Agent {
 
   workOnTask(task, officeMap) {
     this.assignTask(task);
+    if (task.type === 'tool' || task.description?.includes('tool')) {
+      this.setExpression('tool_use');
+    } else if (task.description?.includes('read') || task.description?.includes('search')) {
+      this.setExpression('reading');
+    } else {
+      this.setExpression('coding');
+    }
     this.setDialog(`Working on it... ⚒️`, 3000);
   }
 
