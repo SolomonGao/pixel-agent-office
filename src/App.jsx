@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useOfficeState } from './hooks/useOfficeState.js';
 import { useGameLoop } from './hooks/useGameLoop.js';
+import { useLiveMode } from './hooks/useLiveMode.js';
 import OfficeCanvas from './components/OfficeCanvas.jsx';
 import TaskBoard from './components/TaskBoard.jsx';
 import AgentList from './components/AgentList.jsx';
@@ -9,34 +10,57 @@ import StatsPanel from './components/StatsPanel.jsx';
 import PMDashboard from './components/PMDashboard.jsx';
 
 export default function App() {
-  const {
-    agents, tasks, messages, logs, stats, speed, isRunning,
-    setSpeed, setIsRunning, addTask, spawnAgent, initOffice, update, addLog
-  } = useOfficeState();
-
-  const [showPMDashboard, setShowPMDashboard] = useState(true);
+  const sim = useOfficeState();
+  const [liveMode, setLiveMode] = useState(false);
+  const { connected, liveState, error } = useLiveMode(liveMode);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [showPMDashboard, setShowPMDashboard] = useState(true);
+
+  // Decide which state to use
+  const isLive = liveMode && connected && liveState;
+  const agents = isLive ? liveState.agents : sim.agents;
+  const tasks = isLive ? liveState.tasks : sim.tasks;
+  const messages = isLive ? liveState.messages : sim.messages;
+  const logs = isLive ? liveState.logs : sim.logs;
+  const stats = isLive ? liveState.stats : sim.stats;
+  const speed = sim.speed;
+  const isRunning = sim.isRunning;
 
   useEffect(() => {
-    initOffice();
-    // Add a welcome task
-    setTimeout(() => {
-      addTask('Initialize pixel office visualization', 5, 'simple');
-    }, 1000);
-  }, [initOffice, addTask]);
+    if (!liveMode) {
+      sim.initOffice();
+    }
+  }, [liveMode, sim.initOffice]);
 
+  // Simulation game loop (only when not in live mode)
   useGameLoop((dt) => {
-    update(dt);
-  }, isRunning, speed);
+    if (!liveMode) {
+      sim.update(dt);
+    }
+  }, isRunning && !liveMode, speed);
 
   const handleAddTask = useCallback((description, priority, type) => {
-    addTask(description, priority, type);
-  }, [addTask]);
+    if (liveMode && connected) {
+      // Send to server which will broadcast
+      fetch('http://localhost:3001/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'task_created',
+          data: { taskId: Math.random().toString(36).substr(2, 9), description, priority, taskType: type }
+        }),
+      });
+    } else {
+      sim.addTask(description, priority, type);
+    }
+  }, [liveMode, connected, sim]);
 
   const handleAgentClick = useCallback((agent) => {
     setSelectedAgent(agent);
-    addLog(`Selected agent: ${agent.name}`, 'info');
-  }, [addLog]);
+    if (!liveMode) {
+      sim.addLog(`Selected agent: ${agent.name}`, 'info');
+    }
+  }, [liveMode, sim]);
 
   const activeAgentsCount = agents.filter(a => a.state !== 'idle').length;
 
@@ -48,19 +72,35 @@ export default function App() {
           <span className="text-lg animate-float">🤖</span>
           <h1 className="text-sm text-white tracking-wider">AI AGENT OFFICE</h1>
         </div>
-        <div className="flex gap-6 text-xs">
-          <span className="text-gray-400">
-            ACTIVE: <span className="text-claude">{activeAgentsCount}</span>
-          </span>
-          <span className="text-gray-400">
-            TASKS: <span className="text-message">{tasks.inProgress.length}</span>
-          </span>
-          <span className="text-gray-400">
-            DONE: <span className="text-subagent">{stats.completedTasks}</span>
-          </span>
-          <span className="text-gray-400">
-            SPEED: <span className="text-tool">{speed}x</span>
-          </span>
+        <div className="flex items-center gap-4">
+          {/* Live mode toggle */}
+          <button
+            onClick={() => setLiveMode(!liveMode)}
+            className={`pixel-btn text-[10px] ${liveMode ? 'bg-red-900 border-red-700' : 'bg-gray-800'}`}
+          >
+            {liveMode ? '🔴 LIVE' : '⚪ SIMULATION'}
+          </button>
+          {liveMode && (
+            <span className={`text-[10px] ${connected ? 'text-emerald-400' : 'text-red-400'}`}>
+              {connected ? '● CONNECTED' : error ? '● ERROR' : '● CONNECTING...'}
+            </span>
+          )}
+          <div className="flex gap-4 text-xs">
+            <span className="text-gray-400">
+              ACTIVE: <span className="text-claude">{activeAgentsCount}</span>
+            </span>
+            <span className="text-gray-400">
+              TASKS: <span className="text-message">{tasks.inProgress.length}</span>
+            </span>
+            <span className="text-gray-400">
+              DONE: <span className="text-subagent">{stats.completedTasks}</span>
+            </span>
+            {!liveMode && (
+              <span className="text-gray-400">
+                SPEED: <span className="text-tool">{speed}x</span>
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -85,26 +125,34 @@ export default function App() {
           {/* Bottom Controls */}
           <footer className="h-12 flex items-center justify-between px-4 border-t-2 border-pixel-border bg-pixel-panel shrink-0">
             <div className="flex gap-2">
-              <button onClick={spawnAgent} className="pixel-btn">
-                ➕ Subagent
-              </button>
-              <button
-                onClick={() => setIsRunning(!isRunning)}
-                className="pixel-btn"
-              >
-                {isRunning ? '⏸️ Pause' : '▶️ Play'}
-              </button>
+              {!liveMode && (
+                <>
+                  <button onClick={sim.spawnAgent} className="pixel-btn">
+                    ➕ Subagent
+                  </button>
+                  <button
+                    onClick={() => sim.setIsRunning(!sim.isRunning)}
+                    className="pixel-btn"
+                  >
+                    {sim.isRunning ? '⏸️ Pause' : '▶️ Play'}
+                  </button>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">SPEED</span>
-              <input
-                type="range"
-                min="1"
-                max="5"
-                value={speed}
-                onChange={(e) => setSpeed(Number(e.target.value))}
-                className="w-24 accent-claude"
-              />
+              {!liveMode && (
+                <>
+                  <span className="text-xs text-gray-500">SPEED</span>
+                  <input
+                    type="range"
+                    min="1"
+                    max="5"
+                    value={speed}
+                    onChange={(e) => sim.setSpeed(Number(e.target.value))}
+                    className="w-24 accent-claude"
+                  />
+                </>
+              )}
               <button
                 onClick={() => setShowPMDashboard(!showPMDashboard)}
                 className="pixel-btn primary ml-2"

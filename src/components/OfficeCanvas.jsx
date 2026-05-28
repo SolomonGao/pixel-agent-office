@@ -144,8 +144,20 @@ function drawFurniture(ctx) {
 }
 
 function drawAgent(ctx, agent, isSelected) {
-  const pos = agent.getPosition();
-  const sprite = agent.getSprite();
+  // Handle both Agent class instances and plain objects (live mode)
+  const isClassInstance = typeof agent.getPosition === 'function';
+
+  const pos = isClassInstance
+    ? agent.getPosition()
+    : {
+        x: (agent.px !== undefined ? agent.px : (agent.x || 0) * CELL_SIZE),
+        y: (agent.py !== undefined ? agent.py : (agent.y || 0) * CELL_SIZE)
+      };
+
+  const sprite = isClassInstance
+    ? agent.getSprite()
+    : SPRITES[agent.spriteName || agent.role || 'subagent'];
+
   const scale = 2;
 
   // Selection glow
@@ -161,21 +173,27 @@ function drawAgent(ctx, agent, isSelected) {
   drawSprite(ctx, sprite, pos.x, pos.y, agent.color, scale);
 
   // Work progress bar
-  if (agent.state === 'working' && agent.currentTask) {
-    const barWidth = 32;
-    const barHeight = 4;
-    const barX = pos.x;
-    const barY = pos.y - 10;
+  if (agent.state === 'working') {
+    const progress = isClassInstance
+      ? (agent.currentTask?.progress || 0)
+      : (agent.workProgress || 0);
 
-    ctx.fillStyle = '#374151';
-    ctx.fillRect(barX, barY, barWidth, barHeight);
+    if (progress > 0) {
+      const barWidth = 32;
+      const barHeight = 4;
+      const barX = pos.x;
+      const barY = pos.y - 10;
 
-    ctx.fillStyle = agent.color;
-    ctx.fillRect(barX, barY, barWidth * (agent.currentTask.progress / 100), barHeight);
+      ctx.fillStyle = '#374151';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
 
-    ctx.strokeStyle = '#1f2937';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(barX, barY, barWidth, barHeight);
+      ctx.fillStyle = agent.color;
+      ctx.fillRect(barX, barY, barWidth * (progress / 100), barHeight);
+
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+    }
   }
 
   // State indicator dot
@@ -190,7 +208,8 @@ function drawAgent(ctx, agent, isSelected) {
 
   // Dialog bubble
   if (agent.dialog) {
-    drawDialogBubble(ctx, pos.x + 16, pos.y - 8, agent.dialog.text);
+    const dialogText = isClassInstance ? agent.dialog.text : agent.dialog;
+    drawDialogBubble(ctx, pos.x + 16, pos.y - 8, dialogText);
   }
 
   // Name label
@@ -245,6 +264,30 @@ function drawDialogBubble(ctx, x, y, text) {
   ctx.fillText(text.substring(0, 18), x, y - boxHeight + 11);
 }
 
+function getAgentPos(agent) {
+  if (typeof agent.getPosition === 'function') {
+    return agent.getPosition();
+  }
+  return {
+    x: (agent.px !== undefined ? agent.px : (agent.x || 0) * CELL_SIZE),
+    y: (agent.py !== undefined ? agent.py : (agent.y || 0) * CELL_SIZE)
+  };
+}
+
+function getMessageColor(msg) {
+  if (typeof msg.getColor === 'function') {
+    return msg.getColor();
+  }
+  const colors = {
+    task: '#3b82f6',
+    report: '#10b981',
+    tool_call: '#f59e0b',
+    result: '#8b5cf6',
+    broadcast: '#ec4899'
+  };
+  return colors[msg.type] || '#94a3b8';
+}
+
 function drawMessages(ctx, messages, agents) {
   for (const msg of messages) {
     const fromAgent = agents.find(a => a.id === msg.from);
@@ -252,26 +295,29 @@ function drawMessages(ctx, messages, agents) {
 
     if (!fromAgent) continue;
 
-    const fromPos = fromAgent.getPosition();
+    const fromPos = getAgentPos(fromAgent);
     const startX = fromPos.x + 16;
     const startY = fromPos.y + 16;
 
+    const progress = msg.progress !== undefined ? msg.progress : 0.5;
+    const msgColor = getMessageColor(msg);
+
     let endX, endY;
     if (toAgent) {
-      const toPos = toAgent.getPosition();
+      const toPos = getAgentPos(toAgent);
       endX = toPos.x + 16;
       endY = toPos.y + 16;
     } else {
       // Broadcast - go outward
-      endX = startX + Math.cos(msg.progress * Math.PI * 4) * 60;
-      endY = startY + Math.sin(msg.progress * Math.PI * 4) * 60;
+      endX = startX + Math.cos(progress * Math.PI * 4) * 60;
+      endY = startY + Math.sin(progress * Math.PI * 4) * 60;
     }
 
-    const curX = startX + (endX - startX) * msg.progress;
-    const curY = startY + (endY - startY) * msg.progress;
+    const curX = startX + (endX - startX) * progress;
+    const curY = startY + (endY - startY) * progress;
 
     // Draw trail
-    ctx.strokeStyle = msg.getColor() + '40';
+    ctx.strokeStyle = msgColor + '40';
     ctx.lineWidth = 2;
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
@@ -281,7 +327,7 @@ function drawMessages(ctx, messages, agents) {
     ctx.setLineDash([]);
 
     // Draw particle
-    ctx.fillStyle = msg.getColor();
+    ctx.fillStyle = msgColor;
     ctx.fillRect(curX - 2, curY - 2, 5, 5);
   }
 }
