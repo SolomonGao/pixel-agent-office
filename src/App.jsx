@@ -3,11 +3,10 @@ import { useOfficeState } from './hooks/useOfficeState.js';
 import { useGameLoop } from './hooks/useGameLoop.js';
 import { useLiveMode } from './hooks/useLiveMode.js';
 import OfficeCanvas from './components/OfficeCanvas.jsx';
-import TaskBoard from './components/TaskBoard.jsx';
 import AgentList from './components/AgentList.jsx';
-import ActivityLog from './components/ActivityLog.jsx';
 import StatsPanel from './components/StatsPanel.jsx';
 import PMDashboard from './components/PMDashboard.jsx';
+import ChatPanel from './components/ChatPanel.jsx';
 
 export default function App() {
   const sim = useOfficeState();
@@ -19,10 +18,10 @@ export default function App() {
   // Decide which state to use
   const isLive = liveMode && connected && liveState;
   const agents = isLive ? liveState.agents : sim.agents;
-  const tasks = isLive ? liveState.tasks : sim.tasks;
   const messages = isLive ? liveState.messages : sim.messages;
-  const logs = isLive ? liveState.logs : sim.logs;
+  const chatMessages = isLive ? liveState.chatMessages : [];
   const stats = isLive ? liveState.stats : sim.stats;
+  const tasks = isLive ? liveState.tasks : sim.tasks;
   const speed = sim.speed;
   const isRunning = sim.isRunning;
 
@@ -38,22 +37,6 @@ export default function App() {
       sim.update(dt);
     }
   }, isRunning && !liveMode, speed);
-
-  const handleAddTask = useCallback((description, priority, type) => {
-    if (liveMode && connected) {
-      // Send to server which will broadcast
-      fetch('http://localhost:3001/api/events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'task_created',
-          data: { taskId: Math.random().toString(36).substr(2, 9), description, priority, taskType: type }
-        }),
-      });
-    } else {
-      sim.addTask(description, priority, type);
-    }
-  }, [liveMode, connected, sim]);
 
   const handleAgentClick = useCallback((agent) => {
     setSelectedAgent(agent);
@@ -90,7 +73,7 @@ export default function App() {
               ACTIVE: <span className="text-claude">{activeAgentsCount}</span>
             </span>
             <span className="text-gray-400">
-              TASKS: <span className="text-message">{tasks.inProgress.length}</span>
+              AGENTS: <span className="text-message">{agents.length}</span>
             </span>
             <span className="text-gray-400">
               DONE: <span className="text-subagent">{stats.completedTasks}</span>
@@ -106,12 +89,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 flex min-h-0">
-        {/* Left Panel - Task Board */}
-        <aside className="w-80 border-r-2 border-pixel-border bg-pixel-panel flex flex-col shrink-0">
-          <TaskBoard tasks={tasks} onAddTask={handleAddTask} />
-        </aside>
-
-        {/* Center - Canvas */}
+        {/* Center - Canvas (now takes full left+center space) */}
         <section className="flex-1 flex flex-col min-w-0 relative">
           <div className="flex-1 flex items-center justify-center bg-pixel-darker relative overflow-hidden">
             <OfficeCanvas
@@ -163,13 +141,13 @@ export default function App() {
           </footer>
         </section>
 
-        {/* Right Panel - Logs & Stats */}
-        <aside className="w-72 border-l-2 border-pixel-border bg-pixel-panel flex flex-col shrink-0">
+        {/* Right Panel - Chat & Stats */}
+        <aside className="w-80 border-l-2 border-pixel-border bg-pixel-panel flex flex-col shrink-0">
           <AgentList agents={agents} onAgentClick={handleAgentClick} />
           <div className="flex-1 min-h-0 flex flex-col border-t-2 border-pixel-border">
-            <ActivityLog logs={logs} />
+            <ChatPanel messages={chatMessages} />
           </div>
-          <div className="h-48 border-t-2 border-pixel-border">
+          <div className="h-40 border-t-2 border-pixel-border">
             <StatsPanel stats={stats} agents={agents} tasks={tasks} />
           </div>
         </aside>

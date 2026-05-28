@@ -9,13 +9,35 @@ export function useLiveMode(enabled) {
   const [error, setError] = useState(null);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const intentionalCloseRef = useRef(false);
+  const enabledRef = useRef(enabled);
+  const connectedRef = useRef(false);
+
+  // Keep refs in sync to avoid stale closures in WebSocket handlers
+  enabledRef.current = enabled;
+  connectedRef.current = connected;
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
 
   const connect = useCallback(() => {
-    if (!enabled) return;
+    // Use ref for latest value, not the stale closure
+    if (!enabledRef.current) return;
+
+    // Prevent multiple concurrent connection attempts
+    if (wsRef.current) return;
+
+    // Clear any pending reconnect before creating a new socket
+    clearReconnectTimer();
 
     try {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
+      intentionalCloseRef.current = false;
 
       ws.onopen = () => {
         setConnected(true);
@@ -29,7 +51,6 @@ export function useLiveMode(enabled) {
           if (data.type === 'state') {
             setLiveState(data.payload);
           } else if (data.type === 'event') {
-            // Merge new event into state
             setLiveState(prev => {
               if (!prev) return prev;
               return mergeEvent(prev, data.payload);
@@ -44,36 +65,60 @@ export function useLiveMode(enabled) {
 
       ws.onclose = () => {
         setConnected(false);
-        wsRef.current = null;
-        // Auto reconnect after 3s
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (enabled) connect();
-        }, 3000);
+
+        // Only clear the ref if this socket is still the current one
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+
+        // Do NOT reconnect if disconnect() was called intentionally
+        if (!intentionalCloseRef.current && enabledRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, 3000);
+        }
       };
 
-      ws.onerror = (err) => {
+      ws.onerror = () => {
         setError('Connection failed');
         setConnected(false);
       };
     } catch (err) {
       setError(err.message);
     }
-  }, [enabled]);
+  }, [clearReconnectTimer]);
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
+    clearReconnectTimer();
+
+    const ws = wsRef.current;
+    if (!ws) return;
+
+    // Mark that we are intentionally closing so onclose doesn't reconnect
+    intentionalCloseRef.current = true;
+
+    // Detach handlers to prevent stale closure callbacks from firing
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onclose = null;
+    ws.onerror = null;
+
+    // Only close if not already closed or closing
+    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+      ws.close();
     }
-    if (wsRef.current) {
-      wsRef.current.close();
+
+    // Only clear the ref if this socket is still the current one
+    if (wsRef.current === ws) {
       wsRef.current = null;
     }
+
     setConnected(false);
-  }, []);
+  }, [clearReconnectTimer]);
 
   // Poll fallback if WebSocket fails
   const pollState = useCallback(async () => {
-    if (!enabled || connected) return;
+    if (!enabledRef.current || connectedRef.current) return;
     try {
       const res = await fetch(`${API_URL}/state`);
       if (res.ok) {
@@ -83,12 +128,11 @@ export function useLiveMode(enabled) {
     } catch {
       // Server not running
     }
-  }, [enabled, connected]);
+  }, []);
 
   useEffect(() => {
     if (enabled) {
       connect();
-      // Poll as fallback
       const interval = setInterval(pollState, 1000);
       return () => {
         disconnect();
@@ -165,6 +209,28 @@ function mergeEvent(state, event) {
         payload: { tool: data.tool, input: data.input },
       }];
       break;
+
+    case 'chat_message': {
+      const chatMsg = {
+        id: Math.random().toString(36).substr(2, 9),
+        from: data.from || 'unknown',
+        fromName: data.fromName || data.from || 'Unknown',
+        fromRole: data.fromRole || 'user',
+        content: data.content || '',
+        context: data.context || 'default',
+        timestamp: data.timestamp || new Date().toISOString(),
+      };
+      newState.chatMessages = [...(newState.chatMessages || []).slice(-19), chatMsg];
+      // Update agent dialog for bubble display
+      const agentId = data.fromRole === 'claude' ? 'claude' : data.from;
+      const agentIdx = newState.agents.findIndex(a => a.id === agentId);
+      if (agentIdx >= 0) {
+        newState.agents = newState.agents.map((a, i) =>
+          i === agentIdx ? { ...a, dialog: data.content || '', dialogExpiresAt: Date.now() + 8000 } : a
+        );
+      }
+      break;
+    }
   }
 
   return newState;

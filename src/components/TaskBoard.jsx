@@ -50,7 +50,7 @@ export default function TaskBoard({ tasks, onAddTask }) {
             />
           </div>
         )}
-        {task.subtasks.length > 0 && (
+        {(task.subtasks || []).length > 0 && (
           <div className="mt-1 text-[8px] text-gray-500">
             Sub: {task.subtasks.filter(s => s.status === 'completed').length}/{task.subtasks.length}
           </div>

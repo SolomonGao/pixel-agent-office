@@ -23,7 +23,7 @@
 body {
   background-color: var(--pixel-bg);
   color: #e2e8f0;
-  font-family: 'Press Start 2P', 'Microsoft YaHei', monospace;
+  font-family: 'Press Start 2P', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
   font-size: 10px;
   line-height: 1.6;
   overflow: hidden;
@@ -41,7 +41,7 @@ body {
   border: 2px solid var(--pixel-border);
   background: var(--pixel-panel);
   color: #e2e8f0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Press Start 2P', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
 }
 
 .pixel-btn:hover {
@@ -67,7 +67,7 @@ body {
   border: 2px solid var(--pixel-border);
   background: var(--pixel-darker);
   color: #e2e8f0;
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Press Start 2P', 'Noto Sans SC', 'Microsoft YaHei', 'PingFang SC', sans-serif;
   outline: none;
 }
 

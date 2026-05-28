@@ -21,30 +21,41 @@ process.stdin.on('end', () => {
     const hookData = JSON.parse(input);
     const eventType = process.argv[2] || 'unknown';
 
+    // Debug: log raw hook data to stderr (won't break Claude Code)
+    console.error(`[hook-bridge] raw event=${eventType} data=${JSON.stringify(hookData).substring(0, 200)}`);
+
     let normalizedEvent = null;
 
     switch (eventType) {
-      case 'subagent_start':
+      case 'subagent_start': {
+        // Claude Code hook payload may contain various field names
+        const agentId = hookData.agent_id || hookData.agentId || hookData.id || hookData.request_id || 'unknown';
+        // Try multiple possible name fields
+        const name = hookData.agent_name || hookData.name || hookData.agentType || hookData.type || hookData.description || `Agent-${agentId.slice(0, 6)}`;
         normalizedEvent = {
           timestamp: new Date().toISOString(),
           type: 'subagent_start',
           data: {
-            agentId: hookData.agent_id || hookData.agentId || hookData.id || 'unknown',
-            name: hookData.agent_name || hookData.name || 'Agent',
+            agentId,
+            name,
+            agentType: hookData.agentType || hookData.type || 'unknown',
             color: '#10b981'
           }
         };
         break;
+      }
 
-      case 'subagent_stop':
+      case 'subagent_stop': {
+        const agentId = hookData.agent_id || hookData.agentId || hookData.id || hookData.request_id || 'unknown';
         normalizedEvent = {
           timestamp: new Date().toISOString(),
           type: 'subagent_stop',
           data: {
-            agentId: hookData.agent_id || hookData.agentId || hookData.id || 'unknown'
+            agentId
           }
         };
         break;
+      }
 
       case 'task_created':
         normalizedEvent = {
@@ -54,7 +65,8 @@ process.stdin.on('end', () => {
             taskId: hookData.task_id || hookData.taskId || 't-' + Date.now(),
             description: hookData.task_description || hookData.description || 'Task',
             priority: hookData.priority || 3,
-            taskType: hookData.task_type || 'simple'
+            taskType: hookData.task_type || 'simple',
+            subtasks: hookData.subtasks || []
           }
         };
         break;
@@ -70,9 +82,9 @@ process.stdin.on('end', () => {
         break;
 
       case 'tool_use': {
-        const toolName = hookData.tool_name || 'unknown';
-        const toolInput = hookData.tool_input
-          ? JSON.stringify(hookData.tool_input).substring(0, 100)
+        const toolName = hookData.tool_name || hookData.tool || 'unknown';
+        const toolInput = hookData.tool_input || hookData.input
+          ? JSON.stringify(hookData.tool_input || hookData.input).substring(0, 100)
           : '';
         normalizedEvent = {
           timestamp: new Date().toISOString(),
@@ -89,8 +101,7 @@ process.stdin.on('end', () => {
 
     if (normalizedEvent) {
       fs.appendFileSync(EVENTS_FILE, JSON.stringify(normalizedEvent) + '\n');
-      // Also write to stderr for debugging (won't break Claude Code)
-      console.error(`[hook-bridge] ${eventType} -> ${EVENTS_FILE}`);
+      console.error(`[hook-bridge] ${eventType} -> ${EVENTS_FILE} (agent=${normalizedEvent.data.agentId || normalizedEvent.data.taskId || 'n/a'})`);
     }
   } catch (err) {
     console.error('[hook-bridge] error:', err.message);
